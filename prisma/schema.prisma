@@ -46,7 +46,7 @@ model Role {
 
   userRoles UserRole[]
 
-  @@map("roles")
+  @@map("exp_roles")
 }
 
 // ══════════════════════════════════════════════════
@@ -97,7 +97,7 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
-  @@map("user_roles")
+  @@map("exp_user_roles")
 }
 
 // ══════════════════════════════════════════════════
