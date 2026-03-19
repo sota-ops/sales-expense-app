@@ -11,15 +11,6 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
-  interface JWT {
-    id: string;
-    roles: string[];
-    departmentId: string | null;
-    positionRank: number;
-  }
-}
-
 export type SessionUser = {
   id: string;
   email: string;
