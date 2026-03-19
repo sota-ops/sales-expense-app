@@ -1,0 +1,618 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ══════════════════════════════════════════════════
+// マスタ系
+// ══════════════════════════════════════════════════
+
+model Department {
+  id             String   @id @default(uuid())
+  departmentCode String   @unique @map("department_code")
+  departmentName String   @map("department_name")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  users    User[]
+  expenses Expense[]
+
+  @@map("departments")
+}
+
+model EmployeePosition {
+  id           String   @id @default(uuid())
+  positionCode String   @unique @map("position_code")
+  positionName String   @map("position_name")
+  positionRank Int      @map("position_rank") // 1=CEO, 2=DIRECTOR/MANAGER, 3=GENERAL
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("employee_positions")
+}
+
+model Role {
+  id          String @id @default(uuid())
+  roleCode    String @unique @map("role_code")
+  roleName    String @map("role_name")
+  description String @default("")
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+// ══════════════════════════════════════════════════
+// ユーザー・権限
+// ══════════════════════════════════════════════════
+
+model User {
+  id                 String   @id @default(uuid())
+  employeeCode       String   @unique @map("employee_code")
+  name               String
+  email              String   @unique
+  passwordHash       String   @map("password_hash")
+  departmentId       String?  @map("department_id")
+  employeePositionId String?  @map("employee_position_id")
+  managerUserId      String?  @map("manager_user_id")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  employeePosition EmployeePosition? @relation(fields: [employeePositionId], references: [id])
+  manager          User?             @relation("ManagerSubordinates", fields: [managerUserId], references: [id])
+  subordinates     User[]            @relation("ManagerSubordinates")
+
+  userRoles          UserRole[]
+  visitLogs          VisitLog[]
+  gpsLogs            GpsLog[]
+  expenses           Expense[]
+  activityReports    ActivityReport[]
+  uploadedPhotos     UploadedPhoto[]
+  audioRecords       AudioRecord[]
+  approvalHistories  ApprovalHistory[]
+  auditLogs          AuditLog[]
+  exportedHistories  ExportedHistory[]
+  resolvedAlerts     ExpenseAlert[]    @relation("AlertResolvedBy")
+
+  @@map("users")
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// ══════════════════════════════════════════════════
+// 顧客・訪問先
+// ══════════════════════════════════════════════════
+
+model Client {
+  id         String   @id @default(uuid())
+  clientCode String   @unique @map("client_code")
+  clientName String   @map("client_name")
+  isProspect Boolean  @default(false) @map("is_prospect")
+  address    String?
+  latitude   Float?
+  longitude  Float?
+  phone      String?
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  visitDestinations VisitDestination[]
+  visitLogs         VisitLog[]
+  activityReports   ActivityReport[]
+  expenseItems      ExpenseItem[]
+
+  @@map("clients")
+}
+
+model VisitDestination {
+  id              String   @id @default(uuid())
+  clientId        String   @map("client_id")
+  destinationName String   @map("destination_name")
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  client    Client     @relation(fields: [clientId], references: [id])
+  visitLogs VisitLog[]
+
+  @@map("visit_destinations")
+}
+
+// ══════════════════════════════════════════════════
+// 訪問ログ・GPS
+// ══════════════════════════════════════════════════
+
+model VisitLog {
+  id                   String    @id @default(uuid())
+  userId               String    @map("user_id")
+  clientId             String?   @map("client_id")
+  visitDestinationId   String?   @map("visit_destination_id")
+  activityDate         DateTime  @map("activity_date") @db.Date
+  visitStartAt         DateTime? @map("visit_start_at")
+  visitEndAt           DateTime? @map("visit_end_at")
+  activityType         String    @map("activity_type") // NEW_SALES_VISIT, FOLLOW_UP_VISIT, etc.
+  isNewProspectVisit   Boolean   @default(false) @map("is_new_prospect_visit")
+  needsCeoRecognition  Boolean   @default(false) @map("needs_ceo_recognition")
+  ceoRecognizedAt      DateTime? @map("ceo_recognized_at")
+  ceoRecognizedBy      String?   @map("ceo_recognized_by")
+  memo                 String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user             User              @relation(fields: [userId], references: [id])
+  client           Client?           @relation(fields: [clientId], references: [id])
+  visitDestination VisitDestination? @relation(fields: [visitDestinationId], references: [id])
+
+  gpsLogs            GpsLog[]
+  tripSegments       TripSegment[]
+  activityReports    ActivityReport[]
+  activityEvidences  ActivityEvidence[]
+  uploadedPhotos     UploadedPhoto[]
+  audioRecords       AudioRecord[]
+  expenseItems       ExpenseItem[]
+
+  @@map("visit_logs")
+}
+
+model GpsLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  visitLogId String?  @map("visit_log_id")
+  capturedAt DateTime @map("captured_at")
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  sourceType String   @map("source_type") // VISIT_START, VISIT_END, MANUAL_CAPTURE, BACKGROUND_CAPTURE
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  visitLog VisitLog? @relation(fields: [visitLogId], references: [id])
+
+  @@index([userId, capturedAt])
+  @@map("gps_logs")
+}
+
+model TripSegment {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  activityDate           DateTime  @map("activity_date") @db.Date
+  fromLocationName       String    @map("from_location_name")
+  toLocationName         String    @map("to_location_name")
+  fromLatitude           Float?    @map("from_latitude")
+  fromLongitude          Float?    @map("from_longitude")
+  toLatitude             Float?    @map("to_latitude")
+  toLongitude            Float?    @map("to_longitude")
+  startAt                DateTime? @map("start_at")
+  endAt                  DateTime? @map("end_at")
+  estimatedDistanceKm    Float?    @map("estimated_distance_km")
+  estimatedTransportType String?   @map("estimated_transport_type")
+  relatedVisitLogId      String?   @map("related_visit_log_id")
+  autoGenerated          Boolean   @default(true) @map("auto_generated")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  relatedVisitLog VisitLog?     @relation(fields: [relatedVisitLogId], references: [id])
+  expenseItems    ExpenseItem[]
+
+  @@index([userId, activityDate])
+  @@map("trip_segments")
+}
+
+// ══════════════════════════════════════════════════
+// 経費申請
+// ══════════════════════════════════════════════════
+
+model Expense {
+  id                       String    @id @default(uuid())
+  expenseNo                String    @unique @map("expense_no")
+  userId                   String    @map("user_id")
+  expenseType              String    @map("expense_type") // TRAVEL_EXPENSE, SALES_ALLOWANCE, ENTERTAINMENT_ALLOWANCE, GENERAL_EXPENSE
+  applicationDate          DateTime? @map("application_date") @db.Date
+  targetDate               DateTime  @map("target_date") @db.Date
+  departmentId             String?   @map("department_id")
+  totalAmount              Int       @default(0) @map("total_amount")
+  currency                 String    @default("JPY")
+  status                   String    @default("DRAFT") // DRAFT, SUBMITTED, WAITING_MANAGER_APPROVAL, etc.
+  currentApprovalStep      Int?      @map("current_approval_step")
+  requiresExceptionApproval Boolean  @default(false) @map("requires_exception_approval")
+  exceptionReason          String?   @map("exception_reason")
+  taxTreatmentType         String    @default("OTHER") @map("tax_treatment_type") // WELFARE, ENTERTAINMENT, SALARY_RISK, OTHER
+  remarks                  String?
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  createdBy                String?   @map("created_by")
+  updatedBy                String?   @map("updated_by")
+
+  user       User        @relation(fields: [userId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  expenseItems       ExpenseItem[]
+  approvalRequest    ApprovalRequest?
+  approvalHistories  ApprovalHistory[]
+  expenseAlerts      ExpenseAlert[]
+
+  @@index([userId, targetDate])
+  @@index([status])
+  @@map("expenses")
+}
+
+model ExpenseItem {
+  id              String    @id @default(uuid())
+  expenseId       String    @map("expense_id")
+  itemType        String    @map("item_type") // TRAIN, BUS, TAXI, CAR_MILEAGE, HIGHWAY, PARKING, HOTEL, SALES_DAILY_ALLOWANCE, ENTERTAINMENT_ACTIVITY_ALLOWANCE, GENERAL
+  activityDate    DateTime  @map("activity_date") @db.Date
+  categoryCode    String?   @map("category_code")
+  description     String?
+  amount          Int       @default(0)
+  eligibleAmount  Int       @default(0) @map("eligible_amount")
+  selfPayAmount   Int       @default(0) @map("self_pay_amount")
+  transportType   String?   @map("transport_type")
+  fromPlace       String?   @map("from_place")
+  toPlace         String?   @map("to_place")
+  distanceKm      Float?    @map("distance_km")
+  unitPrice       Float?    @map("unit_price")
+  quantity         Int?
+  clientId        String?   @map("client_id")
+  visitLogId      String?   @map("visit_log_id")
+  tripSegmentId   String?   @map("trip_segment_id")
+  needsReceipt    Boolean   @default(false) @map("needs_receipt")
+  hasReceipt      Boolean   @default(false) @map("has_receipt")
+  ruleCheckStatus String    @default("OK") @map("rule_check_status") // OK, WARNING, VIOLATION, NEED_EXCEPTION
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  expense         Expense          @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  client          Client?          @relation(fields: [clientId], references: [id])
+  visitLog        VisitLog?        @relation(fields: [visitLogId], references: [id])
+  tripSegment     TripSegment?     @relation(fields: [tripSegmentId], references: [id])
+  receipts        ExpenseReceipt[]
+  uploadedPhotos  UploadedPhoto[]
+  expenseAlerts   ExpenseAlert[]
+
+  @@map("expense_items")
+}
+
+model ExpenseReceipt {
+  id                   String    @id @default(uuid())
+  expenseItemId        String    @map("expense_item_id")
+  fileUrl              String    @map("file_url")
+  originalFilename     String    @map("original_filename")
+  mimeType             String    @map("mime_type")
+  fileSize             Int       @map("file_size")
+  ocrVendor            String?   @map("ocr_vendor")
+  ocrStatus            String?   @map("ocr_status")
+  receiptDate          DateTime? @map("receipt_date") @db.Date
+  vendorName           String?   @map("vendor_name")
+  receiptAmount        Int?      @map("receipt_amount")
+  invoiceNo            String?   @map("invoice_no")
+  extractedPayloadJson Json?     @map("extracted_payload_json")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  expenseItem ExpenseItem @relation(fields: [expenseItemId], references: [id], onDelete: Cascade)
+
+  @@map("expense_receipts")
+}
+
+// ══════════════════════════════════════════════════
+// 活動報告・証跡
+// ══════════════════════════════════════════════════
+
+model ActivityReport {
+  id                  String   @id @default(uuid())
+  userId              String   @map("user_id")
+  visitLogId          String?  @map("visit_log_id")
+  reportDate          DateTime @map("report_date") @db.Date
+  activityType        String   @map("activity_type")
+  clientId            String?  @map("client_id")
+  counterpartName     String?  @map("counterpart_name")
+  counterpartCompany  String?  @map("counterpart_company")
+  summary             String?
+  nextAction          String?  @map("next_action")
+  isNewBusiness       Boolean  @default(false) @map("is_new_business")
+  needsCeoRecognition Boolean  @default(false) @map("needs_ceo_recognition")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user               User               @relation(fields: [userId], references: [id])
+  visitLog           VisitLog?          @relation(fields: [visitLogId], references: [id])
+  client             Client?            @relation(fields: [clientId], references: [id])
+  activityEvidences  ActivityEvidence[]
+  audioRecords       AudioRecord[]
+
+  @@map("activity_reports")
+}
+
+model ActivityEvidence {
+  id               String   @id @default(uuid())
+  visitLogId       String?  @map("visit_log_id")
+  activityReportId String?  @map("activity_report_id")
+  photoCount       Int      @default(0) @map("photo_count")
+  audioCount       Int      @default(0) @map("audio_count")
+  gpsPresent       Boolean  @default(false) @map("gps_present")
+  exifPresent      Boolean  @default(false) @map("exif_present")
+  evidenceScore    Int      @default(0) @map("evidence_score")
+  evidenceStatus   String   @default("INSUFFICIENT") @map("evidence_status") // SUFFICIENT, PARTIAL, INSUFFICIENT
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  visitLog       VisitLog?       @relation(fields: [visitLogId], references: [id])
+  activityReport ActivityReport? @relation(fields: [activityReportId], references: [id])
+
+  @@map("activity_evidences")
+}
+
+// ══════════════════════════════════════════════════
+// 写真・EXIF・録音
+// ══════════════════════════════════════════════════
+
+model UploadedPhoto {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  visitLogId       String?  @map("visit_log_id")
+  expenseItemId    String?  @map("expense_item_id")
+  fileUrl          String   @map("file_url")
+  originalFilename String   @map("original_filename")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+
+  user         User           @relation(fields: [userId], references: [id])
+  visitLog     VisitLog?      @relation(fields: [visitLogId], references: [id])
+  expenseItem  ExpenseItem?   @relation(fields: [expenseItemId], references: [id])
+  exifMetadata PhotoExifMetadata?
+
+  @@map("uploaded_photos")
+}
+
+model PhotoExifMetadata {
+  id                     String    @id @default(uuid())
+  uploadedPhotoId        String    @unique @map("uploaded_photo_id")
+  takenAt                DateTime? @map("taken_at")
+  latitude               Float?
+  longitude              Float?
+  geolocationExists      Boolean   @default(false) @map("geolocation_exists")
+  reverseGeocodedAddress String?   @map("reverse_geocoded_address")
+  deviceMake             String?   @map("device_make")
+  deviceModel            String?   @map("device_model")
+  imageWidth             Int?      @map("image_width")
+  imageHeight            Int?      @map("image_height")
+  orientation            Int?
+  timezoneInfo           String?   @map("timezone_info")
+  destinationDistanceM   Float?    @map("destination_distance_m")
+  destinationMatchStatus String    @default("NO_GEO") @map("destination_match_status") // MATCH, NEAR, FAR, NO_GEO
+  createdAt              DateTime  @default(now()) @map("created_at")
+
+  uploadedPhoto UploadedPhoto @relation(fields: [uploadedPhotoId], references: [id], onDelete: Cascade)
+
+  @@map("photo_exif_metadata")
+}
+
+model AudioRecord {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  visitLogId       String?  @map("visit_log_id")
+  activityReportId String?  @map("activity_report_id")
+  fileUrl          String   @map("file_url")
+  originalFilename String   @map("original_filename")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  durationSeconds  Int?     @map("duration_seconds")
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+
+  user           User            @relation(fields: [userId], references: [id])
+  visitLog       VisitLog?       @relation(fields: [visitLogId], references: [id])
+  activityReport ActivityReport? @relation(fields: [activityReportId], references: [id])
+
+  @@map("audio_records")
+}
+
+// ══════════════════════════════════════════════════
+// ルール設定
+// ══════════════════════════════════════════════════
+
+model TravelRule {
+  id                          String    @id @default(uuid())
+  effectiveFrom               DateTime  @map("effective_from") @db.Date
+  effectiveTo                 DateTime? @map("effective_to") @db.Date
+  taxiReceiptRequired         Boolean   @default(true) @map("taxi_receipt_required")
+  taxiShortDistanceThresholdKm Float    @default(2.0) @map("taxi_short_distance_threshold_km")
+  hotelLimitGeneral           Int       @default(10000) @map("hotel_limit_general")
+  hotelLimitManager           Int       @default(15000) @map("hotel_limit_manager")
+  hotelLimitCeo               Int       @default(30000) @map("hotel_limit_ceo")
+  mileageUnitPrice            Float     @default(15.0) @map("mileage_unit_price")
+  parkingReceiptRequired      Boolean   @default(true) @map("parking_receipt_required")
+  highwayReceiptRequired      Boolean   @default(true) @map("highway_receipt_required")
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  @@map("travel_rules")
+}
+
+model SalesAllowanceRule {
+  id                    String    @id @default(uuid())
+  effectiveFrom         DateTime  @map("effective_from") @db.Date
+  effectiveTo           DateTime? @map("effective_to") @db.Date
+  amountCeo             Int       @default(12500) @map("amount_ceo")
+  amountManager         Int       @default(5000) @map("amount_manager")
+  amountGeneral         Int       @default(3000) @map("amount_general")
+  oncePerDay            Boolean   @default(true) @map("once_per_day")
+  requireActivityReport Boolean   @default(true) @map("require_activity_report")
+  requireGeoPhoto       Boolean   @default(true) @map("require_geo_photo")
+  requireAudioRecord    Boolean   @default(true) @map("require_audio_record")
+  requireActivityLog    Boolean   @default(true) @map("require_activity_log")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("sales_allowance_rules")
+}
+
+model EntertainmentAllowanceRule {
+  id                          String    @id @default(uuid())
+  effectiveFrom               DateTime  @map("effective_from") @db.Date
+  effectiveTo                 DateTime? @map("effective_to") @db.Date
+  limitCeo                    Int       @default(15000) @map("limit_ceo")
+  limitManager                Int       @default(10000) @map("limit_manager")
+  limitGeneral                Int       @default(5000) @map("limit_general")
+  requireReceipt              Boolean   @default(true) @map("require_receipt")
+  requireReport               Boolean   @default(true) @map("require_report")
+  requireCounterparty         Boolean   @default(true) @map("require_counterparty")
+  internalOnlyDefaultDisallowed Boolean @default(true) @map("internal_only_default_disallowed")
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  @@map("entertainment_allowance_rules")
+}
+
+model RuleThresholdSetting {
+  id           String @id @default(uuid())
+  settingCode  String @unique @map("setting_code")
+  settingName  String @map("setting_name")
+  numericValue Float? @map("numeric_value")
+  textValue    String? @map("text_value")
+  description  String @default("")
+
+  @@map("rule_threshold_settings")
+}
+
+// ══════════════════════════════════════════════════
+// 承認フロー
+// ══════════════════════════════════════════════════
+
+model ApprovalRoute {
+  id        String   @id @default(uuid())
+  routeName String   @map("route_name")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  steps    ApprovalRouteStep[]
+  requests ApprovalRequest[]
+
+  @@map("approval_routes")
+}
+
+model ApprovalRouteStep {
+  id            String @id @default(uuid())
+  routeId       String @map("route_id")
+  stepOrder     Int    @map("step_order")
+  approverRole  String @map("approver_role") // APPROVER_MANAGER, APPROVER_ACCOUNTING, CEO
+  stepName      String @map("step_name")
+  isConditional Boolean @default(false) @map("is_conditional")
+  conditionType String? @map("condition_type") // EXCEPTION_ONLY, OVER_LIMIT, etc.
+
+  route ApprovalRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stepOrder])
+  @@map("approval_route_steps")
+}
+
+model ApprovalRequest {
+  id               String    @id @default(uuid())
+  expenseId        String    @unique @map("expense_id")
+  routeId          String    @map("route_id")
+  currentStepOrder Int       @default(1) @map("current_step_order")
+  status           String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, RETURNED, REJECTED
+  submittedAt      DateTime? @map("submitted_at")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  expense Expense       @relation(fields: [expenseId], references: [id])
+  route   ApprovalRoute @relation(fields: [routeId], references: [id])
+
+  @@map("approval_requests")
+}
+
+model ApprovalHistory {
+  id             String   @id @default(uuid())
+  expenseId      String   @map("expense_id")
+  stepOrder      Int      @map("step_order")
+  approverUserId String   @map("approver_user_id")
+  actionType     String   @map("action_type") // SUBMIT, APPROVE, RETURN, REJECT, EXCEPTION_APPROVE, CANCEL
+  actionAt       DateTime @default(now()) @map("action_at")
+  comment        String?
+
+  expense  Expense @relation(fields: [expenseId], references: [id])
+  approver User    @relation(fields: [approverUserId], references: [id])
+
+  @@map("approval_histories")
+}
+
+// ══════════════════════════════════════════════════
+// アラート・監査・エクスポート
+// ══════════════════════════════════════════════════
+
+model ExpenseAlert {
+  id            String    @id @default(uuid())
+  expenseId     String    @map("expense_id")
+  expenseItemId String?   @map("expense_item_id")
+  alertCode     String    @map("alert_code")
+  alertLevel    String    @map("alert_level") // INFO, WARNING, CRITICAL
+  alertMessage  String    @map("alert_message")
+  resolvedFlag  Boolean   @default(false) @map("resolved_flag")
+  resolvedBy    String?   @map("resolved_by")
+  resolvedAt    DateTime? @map("resolved_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  expense     Expense      @relation(fields: [expenseId], references: [id])
+  expenseItem ExpenseItem? @relation(fields: [expenseItemId], references: [id])
+  resolver    User?        @relation("AlertResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@map("expense_alerts")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  actionType String   @map("action_type")
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+model ExportedHistory {
+  id          String   @id @default(uuid())
+  exportType  String   @map("export_type")
+  executedBy  String   @map("executed_by")
+  fileUrl     String?  @map("file_url")
+  recordCount Int      @default(0) @map("record_count")
+  executedAt  DateTime @default(now()) @map("executed_at")
+
+  executor User @relation(fields: [executedBy], references: [id])
+
+  @@map("exported_histories")
+}
